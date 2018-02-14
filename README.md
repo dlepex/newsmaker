@@ -18,12 +18,12 @@ rotation_tick = "45s"
 mute_hours = [20, 5] # demon will be silent from 20pm till 5 am
 
 [[filters]]  
-cond = "P(\x26)G; DAP;" // match P&G _OR_ DAP
+cond = "P(\x26)G; DAP;" # match P&G _OR_ DAP
 sources = ["main"]
 pubs = ["main"] 
 
 [[filters]]
-cond = "Paris & Hilton"  // match Paris _AND_ Hilton
+cond = "Paris & Hilton"  # match Paris _AND_ Hilton
 pubs = ["info"]
 sources = ["main", "other"]
 

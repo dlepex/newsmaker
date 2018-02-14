@@ -1,12 +1,12 @@
 ### newsmaker
 
-Newsmaker is a demon who implements the simple pipeline, that connects multiple news sources (rss/atom feeds) with multiple notifiers aka "publishers"  thru multiple filters.
+Newsmaker is a demon that implements the news filtering pipeline. The pipeline connects multiple news sources (rss/atom feeds) with multiple notifiers aka "publishers"  thru multiple filters.
 
-Right now only "http GET" notifiers are supported.  It, for instance, permits you to publish the filtered news in Telegram channels using your own custom bot.
-Its very easy to add your own custom notifiers, and custom sources (if atom/rss is not enough), as they have simple interface.
+Right now only "http GET" notifiers are supported.  It, for instance, permits you to publish the filtered news in your private Telegram channels using your own custom bot.
+Its very easy to add your own custom notifiers andcustom sources too if rss/atom is not enough.
 
 
-##### How to run 
+##### How to run
 ```
 newsmaker config.toml
 ```
@@ -17,13 +17,13 @@ Config.toml sample:
 rotation_tick = "45s"
 mute_hours = [20, 5] # demon will be silent from 20pm till 5 am
 
-[[filters]]
-cond = "P(\x26)G; DAP;"
+[[filters]]  
+cond = "P(\x26)G; DAP;" // match P&G _OR_ DAP
 sources = ["main"]
-pubs = ["main"]
+pubs = ["main"] 
 
 [[filters]]
-cond = "Paris & Hilton" 
+cond = "Paris & Hilton"  // match Paris _AND_ Hilton
 pubs = ["info"]
 sources = ["main", "other"]
 
@@ -43,15 +43,26 @@ send_pause = "5s"
 get_url = "https://api.telegram.org/bot50034962:BBGuVfL-EZ-Wnlj1b80oysOkurJgZdbI/sendMessage?text=%s&chat_id=-20023152348394761&parse_mode=Markdown"
 ```
 
+###### Filter language description
+
+Filter expression is a DNF of regex pattern sequences. Before checking agaisnt the filter expression, the sentence (news title) is tokenized into the words sequence.
+
+Grammar EBF:
+```
+Expr := Conj {";" Conj} 
+Conj := Seq {"&" Seq}
+Seq := Pattern {" " Pattern} //  Seq a sequence of patterns that matches the subsequence of words in the sentence.
+```
+
+Pattern is basically a normal golang regex with minor simplifications. It also has special meta-characters for Russian language nouns morphology. (see words.go code)
+Patterns are word patterns i.e. they are applied to separate words, not to the sentence as a whole.
 
 
-
-
-###### todo
+###### Todo
 
 - add more meaningfull unit tests & CI
 - vendoring
-
+- better docs
 
 
 

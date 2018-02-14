@@ -174,32 +174,21 @@ func (pl Pipeline) Start() error {
 
 func (pl Pipeline) run() {
 
-	wms := make([]wordMatcher, len(pl.filters))
-	for i, f := range pl.filters {
-		wms[i] = wordMatcher{Filter: f}
-	}
 	pubs := make(map[string]struct{})
 
 	for it := range pl.prodc {
-		src, ok := pl.sources[it.Src.Name]
+		_, ok := pl.sources[it.Src.Name]
 		if !ok {
 			log.Fatal("item source not found (bug!)", it.Src.Name)
 			continue
 		}
-		for i, _ := range wms {
-			wms[i].init()
-		}
 
 		atLeastOneMatch := false
-		for s, _ := range it.words {
-			sub := it.words[s:]
-			for _, fi := range src.filterInd {
-				wm := &wms[fi]
-				if !wm.matched {
-					wm.tryMatch(sub)
-				}
-				if wm.matched {
-					atLeastOneMatch = true
+		for _, f := range pl.filters {
+			if f.dnf.MatchWords(it.words) {
+				atLeastOneMatch = true
+				for _, pname := range f.pubs {
+					pubs[pname] = struct{}{}
 				}
 			}
 		}
@@ -210,15 +199,6 @@ func (pl Pipeline) run() {
 
 		if pl.dedup.Check(it.key) {
 			continue
-		}
-
-		for _, fi := range src.filterInd {
-			wm := &wms[fi]
-			if wm.matched {
-				for _, pname := range wm.Filter.pubs {
-					pubs[pname] = struct{}{}
-				}
-			}
 		}
 
 		for pname, _ := range pubs {

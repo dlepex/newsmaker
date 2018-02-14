@@ -18,12 +18,12 @@ rotation_tick = "45s"
 mute_hours = [20, 5] # demon will be silent from 20pm till 5 am
 
 [[filters]]  
-cond = "P(\x26)G; DAP;" # match P&G _OR_ DAP
+cond = "P(\x26)G; DAP;" # title must contain either P&G _OR_ DAP
 sources = ["main"]
 pubs = ["main"] 
 
 [[filters]]
-cond = "Paris & Hilton"  # match Paris _AND_ Hilton
+cond = "Paris & Hilton"  # title must contain both Paris _AND_ Hilton (in any order)
 pubs = ["info"]
 sources = ["main", "other"]
 
@@ -49,13 +49,18 @@ Filter expression is a DNF of regex pattern sequences. Before checking agaisnt t
 
 Grammar EBF:
 ```
-Expr := Conj {";" Conj} 
-Conj := Seq {"&" Seq}
+Expr := Conj {";" Conj} // ; is OR
+Conj := Seq {"&" Seq} // & is AND
 Seq := Pattern {" " Pattern} //  Seq a sequence of patterns that matches the subsequence of words in the sentence.
 ```
 
 Pattern is basically a normal golang regex with minor simplifications. It also has special meta-characters for Russian language nouns morphology. (see words.go code)
 Patterns are word patterns i.e. they are applied to separate words, not to the sentence as a whole.
+
+*Pattern simplications:*
+- Prefix match by default. If you need suffix match, start pattern with star. If you need precise match, end pattern with dollar.
+- Lowercase letter matches both lowercase and uppercase, but uppercase matches only uppercase
+
 
 
 ###### Todo

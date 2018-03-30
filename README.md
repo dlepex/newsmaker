@@ -45,25 +45,23 @@ get_url = "https://api.telegram.org/bot50034962:BBGuVfL-EZ-Wnlj1b80oysOkurJgZdbI
 
 ### Filter language description
 
-Filter expression is a DNF of regex pattern sequences. Before checking agaisnt the filter expression, the sentence (news title) is tokenized into the words sequence.
+Filter expression is a DNF of regex pattern sequences. Before checking against the filter expression, the sentence (news title) is tokenized into a words sequence.
 
-Grammar EBF:
+Filter Grammar EBNF:
 ```
 Expr := Conj {";" Conj} // ; is OR
 Conj := Seq {"&" Seq} // & is AND
 Seq := Pattern {" " Pattern} //  Seq a sequence of patterns that matches the subsequence of words in the sentence.
 ```
 
-Pattern is basically a normal golang regex with minor simplifications. It also has special meta-characters for Russian language nouns morphology. (see words.go code)
+Pattern is a Go regex with minor *simplifications*. It also has special meta-characters for Russian language nouns morphology (see words.go code)
 Patterns are word patterns i.e. they are applied to separate words, not to the sentence as a whole.
 
 *Pattern simplications:*
-- Prefix match by default. If you need "middle" match, start pattern with star. If you need precise word match, end pattern with dollar. If youn need strict suffix match, start pattern with star and end it with dollar.
 - Lowercase letter matches both lowercase and uppercase, but uppercase matches only uppercase
+- Prefix match by default. If you need "middle" match, start pattern with star. If you need precise word match, end pattern with dollar. If youn need strict suffix match, start pattern with star and end it with dollar.
 
-
-
-###### Todo
+### todo
 
 - add more meaningfull unit tests & CI
 - vendoring

@@ -51,7 +51,7 @@ Filter Grammar EBNF:
 ```
 Expr := Conj {";" Conj} // ; is OR
 Conj := Seq {"&" Seq} // & is AND
-Seq := Pattern {" " Pattern} //  Seq a sequence of patterns that matches the subsequence of words in the sentence.
+Seq := Pattern {" " Pattern} //  a sequence of patterns to match some subsequence of words in a sentence.
 ```
 
 Pattern is a Go regex with minor *simplifications*. It also has special meta-characters for Russian language nouns morphology (see words.go code)

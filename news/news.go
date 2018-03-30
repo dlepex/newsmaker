@@ -2,7 +2,9 @@ package news
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/dlepex/newsmaker/words"
@@ -23,15 +25,19 @@ type SourceInfo struct {
 	MuteInterval DayInterval
 }
 
+// SharedCtx unused
 type SharedCtx struct {
 	HTTPClient *http.Client
 }
 
+// Source - news source interface
+// Receive is called if this source is "elected" by rotation, all received items should be send to sink() function.
 type Source interface {
 	Info() *SourceInfo
 	Receive(sink func(*Item)) error
 }
 
+// ItemParams - various news item params received from feed.
 type ItemParams struct {
 	Src        *SourceInfo
 	Title      string
@@ -41,22 +47,25 @@ type ItemParams struct {
 }
 
 // Item is "the news item" produced by Source
-// Item must be properly initialized by calling Init() function
 type Item struct {
 	ItemParams
 	words []string // title words
 	key   DedupKey
 }
 
+// PubInfo - publisher description
 type PubInfo struct {
 	Name string
 }
 
+// Pub is publisher interface
+// Publish - a message consumption loop, if channel `in` is closed - the loop should exit.
 type Pub interface {
 	Info() *PubInfo
 	Publish(in <-chan *Item)
 }
 
+// Check - verifies source info consistency
 func (s *SourceInfo) Check() error {
 	if strext.IsBlank(s.Name) {
 		return errors.New("source: name required")
@@ -67,6 +76,7 @@ func (s *SourceInfo) Check() error {
 	return nil
 }
 
+// NewItem - item constructor from params
 func NewItem(p ItemParams) (*Item, error) {
 	if strext.IsBlank(p.Title) {
 		return nil, errors.New("title required")
@@ -77,16 +87,14 @@ func NewItem(p ItemParams) (*Item, error) {
 	return it, nil
 }
 
-func (src *SourceInfo) newSink(ch chan<- *Item) func(*Item) {
-
-	if len(src.Categories) == 0 {
+func (s *SourceInfo) newSink(ch chan<- *Item) func(*Item) {
+	if len(s.Categories) == 0 {
 		return func(it *Item) {
 			ch <- it
 		}
 	}
-
 	return func(it *Item) {
-		if !matchAnyGlobAny(it.Categories, src.Categories) {
+		if !matchAnyGlobAny(it.Categories, s.Categories) {
 			return
 		}
 		ch <- it
@@ -124,36 +132,37 @@ func (pub *URLPub) Info() *PubInfo {
 	return &pub.PubInfo
 }
 
-func (info *PubInfo) PublishByOne(ch <-chan *Item, delay time.Duration, fn func(*Item) error) {
+func (info *PubInfo) PublishByOne(ch <-chan *Item, delay time.Duration, publish func(*Item) error) { //nolint:golint
 
 	for it := range ch {
-		if err := fn(it); err != nil {
+		if err := publish(it); err != nil {
 			slog.Infow("pub_error", "pub", info.Name, "err", err, "key", it.key)
 		}
 		time.Sleep(delay)
 	}
 }
 
-func (pub *URLPub) Publish(ch <-chan *Item) {
+func (pub *URLPub) Publish(ch <-chan *Item) { //nolint:golint
+	pub.PublishByOne(ch, pub.Pause, func(it *Item) error {
+		timeStr := ""
+		if it.Published != nil {
+			timeStr = it.Published.Format("02.01 15:04")
+		}
 
-	/*
-		for it := range ch {
-			timeStr := ""
-			if it.Published != nil {
-				timeStr = it.Published.Format("02.01 15:04")
+		msg := fmt.Sprintf("*%s*  %s\n [%s](%s)", it.Title, timeStr, it.Src.Name, it.Link)
+		link := fmt.Sprintf(pub.Link, url.QueryEscape(msg))
+
+		r, err := pub.Client.Get(link)
+		if err != nil {
+			return err
+		}
+		defer r.Body.Close() // nolint:errcheck
+		if r != nil {
+			st := r.StatusCode
+			if !(200 <= st && st < 300) {
+				return fmt.Errorf("bad http status: %v (%s)", st, r.Status)
 			}
-
-			msg := fmt.Sprintf("*%s*  %s\n [%s](%s)", it.Title, timeStr, it.Src.Name, it.Link)
-			link := fmt.Sprintf(pub.Link, url.QueryEscape(msg))
-
-			r, err := cl.Get(link)
-
-			cl.Do()
-			var st string
-			if r != nil {
-				st = r.Status
-			}
-			defer r.Body.Close()
-			time.Sleep(pause)
-		}*/
+		}
+		return nil
+	})
 }

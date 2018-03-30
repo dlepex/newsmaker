@@ -1,12 +1,12 @@
-### newsmaker
+### Newsmaker
 
-Newsmaker is a demon that implements the news filtering pipeline. The pipeline connects multiple news sources (rss/atom feeds) with multiple notifiers aka "publishers"  thru multiple filters.
+Newsmaker is a daemon that implements the news filtering pipeline. The pipeline connects multiple news sources (rss/atom feeds) with multiple notifiers aka "publishers"  through multiple filters.
 
-Right now only "http GET" notifiers are supported.  It, for instance, permits you to publish the filtered news in your private Telegram channels using your own custom bot.
-Its very easy to add your own custom notifiers andcustom sources too if rss/atom is not enough.
+Right now only "http-get" notifiers are supported.  This permits you to publish the filtered news in your private Telegram channels using your own custom bot.
+It is not difficult to add your own custom notifiers/publishers or even custom sources too if rss/atom is not enough.
 
 
-##### How to run
+### How to run
 ```
 newsmaker config.toml
 ```
@@ -15,12 +15,12 @@ Config.toml sample:
 
 ```toml
 rotation_tick = "45s" # random source will be requested each tick.
-mute_hours = [20, 5] # demon will be silent from 20pm till 5 am
+mute_hours = [20, 5] # demon will stop sources rotation and be mute from 8pm till 5 am
 
-[[filters]]  
-cond = "P(\x26)G; DAP;" # title must contain either P&G _OR_ DAP
-sources = ["main"]
-pubs = ["main"] 
+[[filters]] 
+cond = "ABC; DAP" # title must contain either ABC _OR_ DAP
+sources = ["main"] # sources to filter
+pubs = ["main"]  # publishers that receive message, if cond is true
 
 [[filters]]
 cond = "Paris & Hilton"  # title must contain both Paris _AND_ Hilton (in any order)
@@ -43,7 +43,7 @@ send_pause = "5s"
 get_url = "https://api.telegram.org/bot50034962:BBGuVfL-EZ-Wnlj1b80oysOkurJgZdbI/sendMessage?text=%s&chat_id=-20023152348394761&parse_mode=Markdown"
 ```
 
-###### Filter language description
+### Filter language description
 
 Filter expression is a DNF of regex pattern sequences. Before checking agaisnt the filter expression, the sentence (news title) is tokenized into the words sequence.
 

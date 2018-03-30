@@ -9,6 +9,21 @@ import (
 	"github.com/dlepex/newsmaker/strext"
 )
 
+// Expr is a sentence filtering condition in a form of DNF of regex patterns.
+// EBNF Grammar of Expr:
+// --------------------------------------------
+// Expr := Conj {";" Conj}
+// Conj := Seq {"&" Seq}
+// Seq := Pattern {" " Pattern}
+// --------------------------------------------
+// ; is OR, + is AND
+// Seq is the sequence of patterns to match the sequence of words in the sentence
+type Expr struct {
+	elems []exprElem
+	// sizes of conjuctions groups
+	conjSizes []int
+}
+
 type exprElem struct {
 	// pattern or sequence of patterns (seq)
 	p []Pattern
@@ -16,22 +31,7 @@ type exprElem struct {
 	conj sliceset.Ints
 }
 
-type Expr struct {
-	elems []exprElem
-	// sizes of conjuctions groups
-	conjSizes []int
-}
-
-/*
-EBNF Grammar of Expr:
---------------------------------------------
-Expr := Conj {";" Conj}
-Conj := Seq {"&" Seq}
-Seq := Pattern {" " Pattern}
---------------------------------------------
-; is OR, + is AND
-Seq is the sequence of patterns to match the sequence of words in the sentence
-*/
+// NewExpr - creates Expr from text (satisfying Expr grammar)
 func NewExpr(s string) (*Expr, error) {
 	ors := strext.SplitAndTrimSpace(s, ";")
 	sort.Sort(strSlice(ors)) // evaluate shortest patterns first
@@ -81,12 +81,14 @@ func NewExpr(s string) (*Expr, error) {
 	return &Expr{elems, csizes}, nil
 }
 
+//Match - matches expr against untokenized sentence
 func (expr *Expr) Match(s string) bool {
 	return expr.MatchWords(Split(s))
 }
 
 const mwStackSz = 128
 
+//MatchWords - matches expr against tokenized sentence
 func (expr *Expr) MatchWords(text []string) bool {
 	var stack [mwStackSz]int16
 	var kconj []int16
@@ -105,7 +107,7 @@ func (expr *Expr) MatchWords(text []string) bool {
 	if len(kconj) > 0 {
 		m = make(map[int16]struct{})
 	}
-	for w, _ := range text {
+	for w := range text {
 		sub := text[w:]
 		for idx, el := range expr.elems {
 			if len(el.conj) == 0 {

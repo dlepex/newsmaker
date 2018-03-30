@@ -9,27 +9,28 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Usually there's 1 instance per app.
-type Pipeline = *PipelineOpaq
-
-type PipelineOpaq struct {
+// Pipeline - news filtering pipeline
+type Pipeline struct {
 	sources map[string]*srcData
 	pubs    map[string]*pubData
 	filters []*Filter
-	modLock sync.Mutex // guards modification and start
+	dedup   SyncDeduplicator // deduplicator (LRU) for news titles (to avoid repeated notifications)
+	rot     rotator
+
+	chanSize int
+	quit     chan struct{} // stop channel
+	prodc    chan *Item    // channel to which the sources write
+
+	lock    sync.Mutex // guards modification and launch
 	started bool
-	wg      sync.WaitGroup
-	dedup   SyncDeduplicator
-	rot     Rotator
-	quit    chan struct{}
-	prodc   chan *Item
+	wg      sync.WaitGroup // tracks launched goroutines
 }
 
 type srcData struct {
 	Source
 	quit      chan struct{}
 	filterInd []int
-	guard     Guard
+	guard     Guard // guards rotation (i.e. only 1 goroutine may read source)
 }
 
 type pubData struct {
@@ -37,24 +38,31 @@ type pubData struct {
 	ch chan *Item
 }
 
-func NewPipeline() Pipeline {
-	return &PipelineOpaq{
-		dedup:   SyncDeduplicator{Deduplicator: NewDedup(8 * 1024)},
-		sources: make(map[string]*srcData),
-		pubs:    make(map[string]*pubData),
+// NewPipeline - creates pipeline
+// chanSize - buffered channels size constant
+func NewPipeline(chanSize int) *Pipeline {
+	return &Pipeline{
+		dedup:    SyncDeduplicator{Deduplicator: NewDedup(8 * 1024)},
+		sources:  make(map[string]*srcData),
+		pubs:     make(map[string]*pubData),
+		chanSize: chanSize,
 	}
 }
 
-func (pl Pipeline) modify(modFn func() error) error {
-	pl.modLock.Lock()
-	defer pl.modLock.Unlock()
+func NewPipelineDefault() *Pipeline { //nolint:golint
+	return NewPipeline(1024)
+}
+
+func (pl *Pipeline) modify(modFn func() error) error {
+	pl.lock.Lock()
+	defer pl.lock.Unlock()
 	if pl.started {
-		return errors.New("Pipeline can be modified only before it is started!")
+		return errors.New("pipeline can be modified only before it was started")
 	}
 	return modFn()
 }
 
-func (pl Pipeline) AddSource(s Source) error {
+func (pl *Pipeline) AddSource(s Source) error { //nolint:golint
 	return pl.modify(func() error {
 		n := s.Info().Name
 		if _, has := pl.sources[n]; has {
@@ -65,7 +73,7 @@ func (pl Pipeline) AddSource(s Source) error {
 	})
 }
 
-func (pl Pipeline) AddPublisher(p Pub) error {
+func (pl *Pipeline) AddPublisher(p Pub) error { //nolint:golint
 	return pl.modify(func() error {
 		n := p.Info().Name
 		if _, has := pl.pubs[n]; has {
@@ -76,7 +84,7 @@ func (pl Pipeline) AddPublisher(p Pub) error {
 	})
 }
 
-func (pl Pipeline) AddFilter(f *Filter) error {
+func (pl *Pipeline) AddFilter(f *Filter) error { //nolint:golint
 	return pl.modify(func() error {
 		if err := f.init(); err != nil {
 			return err
@@ -86,14 +94,14 @@ func (pl Pipeline) AddFilter(f *Filter) error {
 	})
 }
 
-func (pl Pipeline) beforeStart() error {
-	pl.modLock.Lock()
-	defer pl.modLock.Unlock()
+func (pl *Pipeline) beforeStart() error {
+	pl.lock.Lock()
+	defer pl.lock.Unlock()
 	if pl.started {
-		return errors.New("pl: already started")
+		return errors.New("pipeline: already started")
 	}
 	if len(pl.filters) == 0 {
-		return errors.New("pl: no filters")
+		return errors.New("pipeline: no filters")
 	}
 
 	for _, s := range pl.sources {
@@ -102,12 +110,12 @@ func (pl Pipeline) beforeStart() error {
 			return f.matchSrc(info)
 		})
 		if len(s.filterInd) == 0 {
-			slog.Infow("pl: orphaned source", "name", info.Name)
+			slog.Infow("pipeline: orphaned source", "name", info.Name)
 			delete(pl.sources, info.Name)
 		}
 	}
 	if len(pl.sources) == 0 {
-		return errors.New("No sources")
+		return errors.New("pipeline: no sources")
 	}
 	for _, p := range pl.pubs {
 		info := p.Info()
@@ -115,7 +123,7 @@ func (pl Pipeline) beforeStart() error {
 			return f.matchPub(info)
 		})
 		if len(indices) == 0 {
-			slog.Infow("pl: remove pub", "name", info.Name)
+			slog.Infow("pipeline: remove pub", "name", info.Name)
 			delete(pl.pubs, info.Name)
 		} else {
 			for _, i := range indices {
@@ -125,21 +133,23 @@ func (pl Pipeline) beforeStart() error {
 		}
 	}
 	if len(pl.pubs) == 0 {
-		return errors.New("No pubs")
+		return errors.New("pipeline: no publishers(aka notifiers)")
 	}
 	pl.started = true
 	return nil
 }
 
-func (pl Pipeline) Start() error {
-	const chanSize = 2 * 1024
+// Run - launches the pipeline.
+func (pl *Pipeline) Run() error {
 	if err := pl.beforeStart(); err != nil {
 		return err
 	}
-	pl.prodc = make(chan *Item, 2*chanSize)
+	// create producer channel: channel to which the sources write
+	pl.prodc = make(chan *Item, 2*pl.chanSize)
 	pl.wg.Add(len(pl.pubs))
 	for _, p := range pl.pubs {
-		p.ch = make(chan *Item, chanSize)
+		// create each publisher channel: channel that a pub-r reads.
+		p.ch = make(chan *Item, pl.chanSize)
 		pub := p
 		go func() {
 			defer pl.wg.Done()
@@ -150,7 +160,8 @@ func (pl Pipeline) Start() error {
 	for _, _s := range pl.sources {
 		s, info := _s, _s.Info()
 		sink := info.newSink(pl.prodc)
-		pl.rot.Elems = append(pl.rot.Elems, RotatorElem{
+		// add rotator element for each source
+		pl.rot.Elems = append(pl.rot.Elems, rotatorElem{
 			Cooldown: info.Cooldown,
 			Fn: func(now time.Time) {
 				if info.MuteInterval.ContainsTime(now) {
@@ -166,13 +177,13 @@ func (pl Pipeline) Start() error {
 	}
 	pl.quit = make(chan struct{})
 	GoWG(&pl.wg, func() {
-		pl.rot.Run(pl.quit)
+		pl.rot.run(pl.quit)
 	})
 	GoWG(&pl.wg, pl.run)
 	return nil
 }
 
-func (pl Pipeline) run() {
+func (pl *Pipeline) run() {
 
 	pubs := make(map[string]struct{})
 
@@ -201,7 +212,7 @@ func (pl Pipeline) run() {
 			continue
 		}
 
-		for pname, _ := range pubs {
+		for pname := range pubs {
 			logEvent := "pub_send"
 			select {
 			case pl.pubs[pname].ch <- it:
@@ -214,7 +225,8 @@ func (pl Pipeline) run() {
 	}
 }
 
-func (pl Pipeline) Stop() {
+//Stop - stops pipeline
+func (pl *Pipeline) Stop() {
 	pl.quit <- struct{}{}
 	close(pl.prodc)
 	for _, p := range pl.pubs {
@@ -222,6 +234,6 @@ func (pl Pipeline) Stop() {
 	}
 }
 
-func (pl Pipeline) Wait() {
+func (pl *Pipeline) Wait() {
 	pl.wg.Wait()
 }

@@ -9,6 +9,7 @@ import (
 	gfd "github.com/mmcdole/gofeed"
 )
 
+//FeedSrcParams -
 type FeedSrcParams struct {
 	SourceInfo
 	Links  []string
@@ -20,10 +21,17 @@ type feedSrc struct {
 	links []string
 }
 
+// FeedSrcDebug - log extra information
 var FeedSrcDebug bool
-var FeedSrcPause time.Duration = 20 * time.Second
-var FeedSrcPauseRand time.Duration = 20 * time.Second
 
+var (
+	// FeedSrcPause - multi-link feedsrc: pause between each link request
+	FeedSrcPause = 20 * time.Second
+	// FeedSrcPauseRand - feedsrc: random pause between each link request
+	FeedSrcPauseRand = 20 * time.Second
+)
+
+//NewFeedSrc creates feed (rss/atom) source
 func NewFeedSrc(p FeedSrcParams) (Source, error) {
 	if p.Client == nil {
 		p.Client = http.DefaultClient
@@ -42,14 +50,19 @@ func (src *feedSrc) Info() *SourceInfo {
 	return &src.SourceInfo
 }
 
-func (src *feedSrc) Receive(sink func(*Item)) error {
-	// shuffle links
+//shuffleLinks uses Sattolo's algorithm
+func (src *feedSrc) shuffleLinks() []string {
 	links := src.links
-	for i := len(links) - 1; i > 0; i-- {
-		j := rand.Intn(i + 1)
+	for i := len(links); i > 1; {
+		i--
+		j := rand.Intn(i)
 		links[i], links[j] = links[j], links[i]
 	}
-	for _, link := range links {
+	return links
+}
+
+func (src *feedSrc) Receive(sink func(*Item)) error {
+	for _, link := range src.shuffleLinks() {
 		src.ReceiveOne(link, sink)
 		time.Sleep(FeedSrcPause + time.Duration(rand.Int63n(int64(FeedSrcPauseRand))))
 	}
@@ -84,15 +97,6 @@ func (src *feedSrc) ReceiveOne(link string, sink func(*Item)) {
 			continue
 		}
 		sink(item)
-	}
-}
-
-func (src *feedSrc) Sleep(dur int64, quit <-chan struct{}) bool {
-	select {
-	case <-time.After(time.Duration(dur)):
-		return true
-	case <-quit:
-		return false
 	}
 }
 

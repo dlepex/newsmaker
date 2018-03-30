@@ -19,20 +19,20 @@ func main() {
 	news.SetLogger(log)
 	slog := log.Sugar()
 	cfgpath := flag.Arg(0)
-	slog.Infow("start newsmaker", "cfgpath", cfgpath)
-	var conf Config
+	slog.Infow("starting newsmaker", "cfgpath", cfgpath)
+	var conf config
 	_, err := toml.DecodeFile(cfgpath, &conf)
 	if err != nil {
 		slog.Fatalf("config parse err: %s", err)
 	}
 
-	pl, ers := NewPipeline(&conf)
+	pl, ers := conf.newPipeline()
 
 	if len(ers) != 0 {
 		slog.Fatalf("pipeline config errors: %v", ers)
 	}
 
-	err = pl.Start()
+	err = pl.Run()
 	if err != nil {
 		slog.Fatalf("pipeline start error: %s", err)
 	}
@@ -46,7 +46,7 @@ func setupSignalHandlers(l *zap.Logger) {
 	signal.Notify(c, os.Interrupt)
 	go func() {
 		for range c {
-			l.Sync()
+			l.Sync() //nolint:errcheck
 			os.Exit(0)
 		}
 	}()

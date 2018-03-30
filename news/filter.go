@@ -6,12 +6,12 @@ import (
 	"github.com/dlepex/newsmaker/words"
 )
 
-type Filter struct {
+type Filter struct { //nolint
 	Cond    string
-	Sources []string
-	Pubs    []string
+	Sources []string // this are "globs" (glob is a simplified pattern, right now it's either prefix or suffix match)
+	Pubs    []string // same
 
-	dnf  *words.Expr
+	dnf  *words.Expr // news title match condition
 	pubs []string
 }
 
@@ -24,11 +24,14 @@ func (f *Filter) init() error {
 	return nil
 }
 
+// matchAnyGlob matches string s against "globs"
+// true, if glob is either prefix or suffix of s.
+// todo use glob instead of simple prefix/suffix match?
 func matchAnyGlob(s string, globs []string) bool {
 	if len(globs) == 0 {
 		return true
 	}
-	//todo use glob instead of simple prefix/suffix match
+
 	for _, g := range globs {
 		if strings.HasPrefix(s, g) || strings.HasSuffix(s, g) {
 			return true
@@ -68,13 +71,4 @@ func chooseFilters(ff []*Filter, match func(*Filter) bool) []int {
 		}
 	}
 	return ind
-}
-
-func matchAnyPub(ff []*Filter, p *PubInfo) bool {
-	for _, f := range ff {
-		if f.matchPub(p) {
-			return true
-		}
-	}
-	return false
 }

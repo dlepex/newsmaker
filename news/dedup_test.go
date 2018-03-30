@@ -17,9 +17,7 @@ func TestDedupKey(t *testing.T) {
 	}
 }
 func TestDedup(t *testing.T) {
-
 	d := NewDedup(4)
-
 	K := func(s string) DedupKey {
 		return StrToDedupKey(s)
 	}

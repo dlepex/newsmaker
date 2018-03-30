@@ -7,6 +7,7 @@ import (
 	"sync"
 )
 
+// DedupKeySize - number of bytes in dedupkey byte arr
 const DedupKeySize = 16
 
 // DedupKey is array due to GC reasons (map will not be scanned), although string keys may be faster to get
@@ -21,11 +22,13 @@ type Deduplicator struct {
 	qw      int
 }
 
+// SyncDeduplicator -  deduplicator with mutex
 type SyncDeduplicator struct {
 	*Deduplicator
 	mu sync.Mutex
 }
 
+//NewDedup - creates new deduplicator with specified max size
 func NewDedup(maxSize int) *Deduplicator {
 	if maxSize <= 0 {
 		log.Fatalf("illegal maxSize %d", maxSize)
@@ -33,7 +36,7 @@ func NewDedup(maxSize int) *Deduplicator {
 	return &Deduplicator{make(map[DedupKey]struct{}), make([]DedupKey, maxSize), maxSize, 0, 0}
 }
 
-// Checks if key is duplicate (true), if not - adds it to the cache (false)
+// Check - checks if key is duplicate (true), if not - adds it to the cache (false)
 func (d *Deduplicator) Check(k DedupKey) bool {
 	m := d.m
 	if _, has := m[k]; has {
@@ -52,6 +55,7 @@ func (d *Deduplicator) Check(k DedupKey) bool {
 	return false
 }
 
+// Check - checks if key is duplicate (true), if not - adds it to the cache (false)
 func (d *SyncDeduplicator) Check(k DedupKey) bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -63,21 +67,22 @@ func getAndInc(ptr *int, max int) int {
 	if v < max {
 		*ptr = v + 1
 		return v
-	} else {
-		*ptr = 0
-		return max
 	}
+	*ptr = 0
+	return max
+
 }
 
+//StrToDedupKey - calculates dedupKey for strings (by hashing)
 func StrToDedupKey(xs ...string) DedupKey {
 	if len(xs) == 0 {
 		return DedupKey{}
 	}
 	h := fnv.New128()
-	h.Write([]byte(xs[0]))
+	h.Write([]byte(xs[0])) // nolint:errcheck
 	for _, x := range xs[1:] {
-		h.Write([]byte{0})
-		h.Write([]byte(x))
+		h.Write([]byte{0}) // nolint:errcheck
+		h.Write([]byte(x)) // nolint:errcheck
 	}
 
 	var k DedupKey

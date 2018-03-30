@@ -6,33 +6,33 @@ import (
 	"github.com/dlepex/newsmaker/news"
 )
 
-type Config struct {
+type config struct {
 	RTick     duration            `toml:"rotation_tick"`
 	MuteHours *[2]int             `toml:"mute_hours"`
-	Filters   []*FilterConf       `toml:"filters"`
-	Sources   map[string]*SrcConf `toml:"src"`
-	Pubs      map[string]*PubConf `toml:"pub"`
+	Filters   []*filterConf       `toml:"filters"`
+	Sources   map[string]*srcConf `toml:"src"`
+	Pubs      map[string]*pubConf `toml:"pub"`
 }
 
-type FilterConf struct {
+type filterConf struct {
 	Cond    string   `toml:"cond"`
 	Sources []string `toml:"sources"`
 	Pubs    []string `toml:"pubs"`
 }
 
-type SrcConf struct {
+type srcConf struct {
 	CD    duration `toml:"cd"`
 	Links []string `toml:"links"`
 	Categ []string `toml:"categ"`
 }
 
-type PubConf struct {
+type pubConf struct {
 	SendPause duration `toml:"send_pause"`
-	GetUrl    string   `toml:"get_url"`
+	GetURL    string   `toml:"get_url"`
 }
 
-func NewPipeline(c *Config) (pl news.Pipeline, ers []error) {
-	pl = news.NewPipeline()
+func (c *config) newPipeline() (pl *news.Pipeline, ers []error) {
+	pl = news.NewPipelineDefault()
 	globalMuteHours := news.DayInterval{}
 	if c.MuteHours != nil {
 		globalMuteHours = news.DayHoursFromTo(c.MuteHours[0], c.MuteHours[1])
@@ -66,11 +66,11 @@ func NewPipeline(c *Config) (pl news.Pipeline, ers []error) {
 	return
 }
 
-func (c *FilterConf) toFilter() *news.Filter {
+func (c *filterConf) toFilter() *news.Filter {
 	return &news.Filter{Cond: c.Cond, Sources: c.Sources, Pubs: c.Pubs}
 }
 
-func (c *SrcConf) toSource(n string, muteHours news.DayInterval) (news.Source, error) {
+func (c *srcConf) toSource(n string, muteHours news.DayInterval) (news.Source, error) {
 	return news.NewFeedSrc(news.FeedSrcParams{
 		SourceInfo: news.SourceInfo{
 			Name:         n,
@@ -82,12 +82,12 @@ func (c *SrcConf) toSource(n string, muteHours news.DayInterval) (news.Source, e
 	})
 }
 
-func (c *PubConf) toPub(n string) (news.Pub, error) {
+func (c *pubConf) toPub(n string) (news.Pub, error) {
 	return &news.URLPub{
 		PubInfo: news.PubInfo{
 			Name: n,
 		},
-		Link:  c.GetUrl,
+		Link:  c.GetURL,
 		Pause: c.SendPause.Duration,
 	}, nil
 }

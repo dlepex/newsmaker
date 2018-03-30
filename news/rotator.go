@@ -8,36 +8,42 @@ import (
 	"github.com/willf/bitset"
 )
 
-var RotatorTickDefault time.Duration = 60 * time.Second
+// rotTickDefault - default tick duration
+var rotTickDefault = 60 * time.Second
 
-type Rotator struct {
+// DayInterval is a (bit) set 0..23 of day hours.
+type DayInterval struct {
+	set *bitset.BitSet
+}
+
+type rotator struct {
 	Tick  time.Duration
-	Elems []RotatorElem
+	Elems []rotatorElem
 	guard Guard
 }
 
-type RotatorElem struct {
+type rotatorElem struct {
 	Cooldown time.Duration
 	// Fn should not panic.
 	Fn   func(time.Time)
 	last time.Time
 }
 
-func (rot *Rotator) Run(quit <-chan struct{}) {
-	if !rot.guard.TryLock() {
+func (rot *rotator) run(quit <-chan struct{}) {
+	if !rot.guard.CanLock() {
 		panic("rotator: already started")
 	}
-	if rot.Tick == 0 {
-		rot.Tick = RotatorTickDefault
-	}
 	defer rot.guard.Unlock()
+	if rot.Tick == 0 {
+		rot.Tick = rotTickDefault
+	}
 	slog.Infow("Rotator started", "elemCount", len(rot.Elems), "tick", rot.Tick)
 	defer slog.Infow("Rotator finished", "elemCount", len(rot.Elems))
 	if len(rot.Elems) == 0 {
 		panic("rotator: no elements")
 	}
 
-	ready := make([]*RotatorElem, 0, len(rot.Elems))
+	ready := make([]*rotatorElem, 0, len(rot.Elems))
 	for {
 		select {
 		case <-time.After(rot.Tick):
@@ -48,15 +54,15 @@ func (rot *Rotator) Run(quit <-chan struct{}) {
 	}
 }
 
-func (rot *Rotator) onTick(ready []*RotatorElem, now time.Time) {
+func (rot *rotator) onTick(ready []*rotatorElem, now time.Time) {
 	ready = ready[:0]
-	for i, _ := range rot.Elems {
+	for i := range rot.Elems {
 		e := &rot.Elems[i]
 		if now.Sub(e.last) >= e.Cooldown {
 			ready = append(ready, e)
 		}
 	}
-	var elem *RotatorElem
+	var elem *rotatorElem
 	switch len(ready) {
 	case 0:
 		return
@@ -69,16 +75,15 @@ func (rot *Rotator) onTick(ready []*RotatorElem, now time.Time) {
 	elem.Fn(now)
 }
 
-type DayInterval struct {
-	set *bitset.BitSet
-}
-
 func checkHour(h int) {
-	if h < 0 || h > 23 {
-		panic("hour must belong 0..23")
+	if !(0 <= h && h <= 23) {
+		panic("hour must be in range: 0..23")
 	}
 }
 
+// DayHoursFromTo creates DayInterval from begin(incl.) to end (incl.) hour
+// begin, end are day hours 0..23
+// end may be less that begin, since day hours are are cyclic :-)
 func DayHoursFromTo(begin, end int) DayInterval {
 	checkHour(begin)
 	checkHour(end)
@@ -98,14 +103,14 @@ func DayHoursFromTo(begin, end int) DayInterval {
 	return DayInterval{set}
 }
 
-func (di DayInterval) ContainsHour(h int) bool {
+func (di DayInterval) ContainsHour(h int) bool { //nolint
 	if di.set == nil {
 		return false
 	}
 	return di.set.Test(uint(h))
 }
 
-func (di DayInterval) ContainsTime(t time.Time) bool {
+func (di DayInterval) ContainsTime(t time.Time) bool { //nolint
 	return di.ContainsHour(t.Hour())
 }
 

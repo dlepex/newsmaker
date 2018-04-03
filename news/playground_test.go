@@ -1,26 +1,31 @@
 package news
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"net/url"
 	"testing"
 	"time"
 
+	"text/template"
+
 	"go.uber.org/zap"
 )
 
-// Not real tests, just a playground.
+//
+//  It's a playground, not test-cases.
+//
 func TestTelegram(t *testing.T) {
 	msg := `
 		01.01.2017
 		*Title News Happened*
-		[finam](http://www.dell.com/learn/ru/ru/rudhs1/campaigns/faq-ru)
+		[dfdf](http://www.dell.com/learn/ru/ru/rudhs1/campaigns/faq-ru)
 	`
 
-	tpl := "https://api.telegram.org/bot500397448:AAGuVfL-EP-Wnlj1v5Ub40oykOkxrJgZZbI/sendMessage?text=%s&chat_id=-1001159128561&parse_mode=Markdown"
+	tpl := "https://api.telegram.org/bot500336234:AAGuVfL-EP-Wnlj1v5Ub40oykOkxrJgZZbI/sendMessage?text=%s&chat_id=-1001159128561&parse_mode=Markdown"
 
-	tpl = "https://api.telegram.org/bot500397448:AAGuVfL-EP-Wnlj1v5Ub40oykOkxrJgZZbI/sendMessage?text=%s&chat_id=-1001356941917&parse_mode=Markdown"
+	tpl = "https://api.telegram.org/bot500336234:AAGuVfL-EP-Wnlj1v5Ub40oykOkxrJgZZbI/sendMessage?text=%s&chat_id=-1001356941917&parse_mode=Markdown"
 	link := fmt.Sprintf(tpl, url.QueryEscape(msg))
 	resp, err := http.Get(link)
 	slog.Info(resp, err)
@@ -104,13 +109,13 @@ func TestMute(t *testing.T) {
 }
 
 func TestURLPub(t *testing.T) {
-	pub := &URLPub{
+	pub := NewHTTPPub(&HTTPPubParams{
 		PubInfo: PubInfo{
 			Name: "test",
 		},
-		Link:  "https://api.telegram.org/bot500397448:AAGuVfL-EP-Wnlj1v5Ub40oykOkxrJgZZbI/sendMessage?text=%s&chat_id=-1001159128561&parse_mode=Markdown",
+		Link:  "https://api.telegram.org/bot500336234:AAGuVfL-EP-Wnlj1v5Ub40oykOkxrJgZZbI/sendMessage?text=%s&chat_id=-1001159128561&parse_mode=Markdown",
 		Pause: 7 * time.Second,
-	}
+	})
 
 	ch := make(chan *Item, 20)
 
@@ -155,13 +160,13 @@ func TestPipeline(t *testing.T) {
 	}
 
 	f1 := &Filter{
-		Cond:    "путин",
+		Cond:    "россия",
 		Sources: []string{"reg"},
 		Pubs:    []string{"p1", "test"},
 	}
 
 	f2 := &Filter{
-		Cond:    "лавров",
+		Cond:    "москва",
 		Sources: []string{"reg"},
 		Pubs:    []string{"p2"},
 	}
@@ -172,13 +177,13 @@ func TestPipeline(t *testing.T) {
 		}
 	}
 
-	pub := &URLPub{
+	pub := NewHTTPPub(&HTTPPubParams{
 		PubInfo: PubInfo{
 			Name: "test",
 		},
-		Link:  "https://api.telegram.org/bot500397448:AAGuVfL-EP-Wnlj1v5Ub40oykOkxrJgZZbI/sendMessage?text=%s&chat_id=-1001159128561&parse_mode=Markdown",
+		Link:  "https://api.telegram.org/bot500336234:AAGuVfL-EP-Wnlj1v5Ub40oykOkxrJgZZbI/sendMessage?text=%s&chat_id=-1001159128561&parse_mode=Markdown",
 		Pause: 3 * time.Second,
-	}
+	})
 
 	p1, err := NewLogPub(PubInfo{
 		Name: "p1",
@@ -210,4 +215,20 @@ func TestPipeline(t *testing.T) {
 
 	pl.Wait()
 
+}
+
+func TestTpl(t *testing.T) {
+	tmpl, _ := template.New("test").Parse("*{{.Title}}* {{.DateFmt}} \n{{.Src.Name}} {{.Link}}")
+
+	item := &Item{ItemParams: ItemParams{
+		Src: &SourceInfo{
+			Name: "Hello",
+		},
+		Link:  "link/aa/aaa/a",
+		Title: "bbb",
+	}, DateFmt: "12.121.1"}
+	buf := bytes.NewBuffer(make([]byte, 0, 256))
+
+	tmpl.Execute(buf, item)
+	t.Log(buf.String())
 }

@@ -1,17 +1,15 @@
 package news
 
 import (
-	"math/rand"
-	"time"
-
 	"go.uber.org/zap"
 )
 
+// slog - package global "sugared" logger.
+// hopefully, it is safe to modify it before any code that sees slog actually runs
 var slog *zap.SugaredLogger
 
 func init() {
 	SetLoggerDefault()
-	rand.Seed(time.Now().UTC().UnixNano())
 }
 
 func SetLogger(l *zap.Logger) { //nolint:golint

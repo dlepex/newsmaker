@@ -48,11 +48,9 @@ func TestExpr(t *testing.T) {
 
 	testMatchers(t, tests, func(s string) (matcher, error) {
 		expr, err := NewExpr(s)
-
 		if err == nil {
 			t.Log(expr.conjSizes, expr.elems)
 		}
-
 		return expr, err
 	})
 }

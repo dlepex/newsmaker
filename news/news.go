@@ -1,10 +1,12 @@
 package news
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"text/template"
 	"time"
 
 	"github.com/dlepex/newsmaker/words"
@@ -23,11 +25,6 @@ type SourceInfo struct {
 	Categories   []string
 	Cooldown     time.Duration
 	MuteInterval DayInterval
-}
-
-// SharedCtx unused
-type SharedCtx struct {
-	HTTPClient *http.Client
 }
 
 // Source - news source interface
@@ -49,8 +46,9 @@ type ItemParams struct {
 // Item is "the news item" produced by Source
 type Item struct {
 	ItemParams
-	words []string // title words
-	key   DedupKey
+	words   []string // title words
+	key     DedupKey
+	DateFmt string // formated datetime (for text template use only)
 }
 
 // PubInfo - publisher description
@@ -58,8 +56,8 @@ type PubInfo struct {
 	Name string
 }
 
-// Pub is publisher interface
-// Publish - a message consumption loop, if channel `in` is closed - the loop should exit.
+// Pub aka publisher/notifier.
+// Publish: message receive loop, if channel `in` is closed - the loop should exit.
 type Pub interface {
 	Info() *PubInfo
 	Publish(in <-chan *Item)
@@ -101,11 +99,12 @@ func (s *SourceInfo) newSink(ch chan<- *Item) func(*Item) {
 	}
 }
 
+// dummy publisher that only logs items.
 type logPub struct {
 	PubInfo
 }
 
-func NewLogPub(p PubInfo) (Pub, error) {
+func NewLogPub(p PubInfo) (Pub, error) { //nolint
 	return &logPub{p}, nil
 }
 
@@ -119,16 +118,37 @@ func (pub *logPub) Publish(ch <-chan *Item) {
 	}
 }
 
-var URLPubPause time.Duration = time.Second
+var URLPubPause time.Duration = time.Second //nolint:golint
 
-type URLPub struct {
+type ItemStringer func(it *Item) string //nolint:golint
+
+type HTTPPub struct { //nolint:golint
+	HTTPPubParams
+	client *http.Client
+}
+type HTTPPubParams struct { //nolint:golint
 	PubInfo
-	Link   string
-	Pause  time.Duration
-	Client *http.Client
+	Link         string        // url sprinf format, the only argument of sprintf is item string.
+	ItemStringer               // converts item to string
+	Pause        time.Duration // pause between http queries
 }
 
-func (pub *URLPub) Info() *PubInfo {
+func NewHTTPPub(params *HTTPPubParams) Pub { //nolint:golint
+	p := &HTTPPub{
+		HTTPPubParams: *params,
+		client:        &http.Client{},
+	}
+	if p.ItemStringer == nil {
+		p.ItemStringer = itemStrDefault
+	}
+	return p
+}
+
+func itemStrDefault(it *Item) string {
+	return fmt.Sprintf("%v", it)
+}
+
+func (pub *HTTPPub) Info() *PubInfo { //nolint:golint
 	return &pub.PubInfo
 }
 
@@ -142,17 +162,14 @@ func (info *PubInfo) PublishByOne(ch <-chan *Item, delay time.Duration, publish 
 	}
 }
 
-func (pub *URLPub) Publish(ch <-chan *Item) { //nolint:golint
+func (pub *HTTPPub) Publish(ch <-chan *Item) { //nolint:golint
 	pub.PublishByOne(ch, pub.Pause, func(it *Item) error {
-		timeStr := ""
 		if it.Published != nil {
-			timeStr = it.Published.Format("02.01 15:04")
+			it.DateFmt = it.Published.Format("02.01 15:04")
 		}
-
-		msg := fmt.Sprintf("*%s*  %s\n [%s](%s)", it.Title, timeStr, it.Src.Name, it.Link)
+		msg := pub.ItemStringer(it)
 		link := fmt.Sprintf(pub.Link, url.QueryEscape(msg))
-
-		r, err := pub.Client.Get(link)
+		r, err := pub.client.Get(link)
 		if err != nil {
 			return err
 		}
@@ -165,4 +182,13 @@ func (pub *URLPub) Publish(ch <-chan *Item) { //nolint:golint
 		}
 		return nil
 	})
+}
+
+func NewItemTemplateStringer(gotmpl string) ItemStringer { //nolint:golint
+	t := template.Must(template.New("item-template").Parse(gotmpl))
+	return func(it *Item) string {
+		buf := bytes.NewBuffer(make([]byte, 0, 256))
+		t.Execute(buf, it) //nolint:errcheck
+		return buf.String()
+	}
 }

@@ -29,6 +29,7 @@ type srcConf struct {
 type pubConf struct {
 	SendPause duration `toml:"send_pause"`
 	GetURL    string   `toml:"get_url"`
+	Template  string   `toml:"template"` // optional go template (Item struct fields)
 }
 
 func (c *config) newPipeline() (pl *news.Pipeline, ers []error) {
@@ -83,13 +84,19 @@ func (c *srcConf) toSource(n string, muteHours news.DayInterval) (news.Source, e
 }
 
 func (c *pubConf) toPub(n string) (news.Pub, error) {
-	return &news.URLPub{
+	params := &news.HTTPPubParams{
 		PubInfo: news.PubInfo{
 			Name: n,
 		},
 		Link:  c.GetURL,
 		Pause: c.SendPause.Duration,
-	}, nil
+	}
+	tpl := c.Template
+	if tpl == "" {
+		tpl = "*{{.Title}}* {{.DateFmt}} \n{{.Src.Name}} {{.Link}}" // telegram friendly template by default
+	}
+	params.ItemStringer = news.NewItemTemplateStringer(tpl)
+	return news.NewHTTPPub(params), nil
 }
 
 type duration struct {

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"math/rand"
 	"os"
 	"os/signal"
+	"time"
 
 	"flag"
 
@@ -12,7 +14,7 @@ import (
 )
 
 func main() {
-
+	rand.Seed(time.Now().UTC().UnixNano())
 	flag.Parse()
 
 	log, _ := zap.NewDevelopment()

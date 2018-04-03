@@ -10,11 +10,13 @@ import (
 )
 
 // Pipeline - news filtering pipeline
+// Pipeline uses rotator, that schedules source requests randomly,
+// so use rand.Seed() before launching pipeline.
 type Pipeline struct {
 	sources map[string]*srcData
 	pubs    map[string]*pubData
 	filters []*Filter
-	dedup   SyncDeduplicator // deduplicator (LRU) for news titles (to avoid repeated notifications)
+	dedup   Deduplicator // deduplicator (LRU) for news titles (to avoid repeated notifications)
 	rot     rotator
 
 	chanSize int
@@ -40,9 +42,9 @@ type pubData struct {
 
 // NewPipeline - creates pipeline
 // chanSize - buffered channels size constant
-func NewPipeline(chanSize int) *Pipeline {
+func NewPipeline(chanSize int, d Deduplicator) *Pipeline {
 	return &Pipeline{
-		dedup:    SyncDeduplicator{Deduplicator: NewDedup(8 * 1024)},
+		dedup:    DedupSync(d),
 		sources:  make(map[string]*srcData),
 		pubs:     make(map[string]*pubData),
 		chanSize: chanSize,
@@ -50,7 +52,7 @@ func NewPipeline(chanSize int) *Pipeline {
 }
 
 func NewPipelineDefault() *Pipeline { //nolint:golint
-	return NewPipeline(1024)
+	return NewPipeline(1024, NewDedup(8192))
 }
 
 func (pl *Pipeline) modify(modFn func() error) error {
@@ -208,7 +210,7 @@ func (pl *Pipeline) run() {
 			continue
 		}
 
-		if pl.dedup.Check(it.key) {
+		if !pl.dedup.Keep(it.key) {
 			continue
 		}
 
@@ -226,6 +228,7 @@ func (pl *Pipeline) run() {
 }
 
 //Stop - stops pipeline
+//todo check & refac.
 func (pl *Pipeline) Stop() {
 	pl.quit <- struct{}{}
 	close(pl.prodc)
@@ -234,6 +237,7 @@ func (pl *Pipeline) Stop() {
 	}
 }
 
+// todo refac/remove
 func (pl *Pipeline) Wait() {
 	pl.wg.Wait()
 }

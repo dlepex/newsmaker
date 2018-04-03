@@ -3,7 +3,6 @@ package news
 import (
 	"encoding/hex"
 	"hash/fnv"
-	"log"
 	"sync"
 )
 
@@ -37,7 +36,7 @@ type syncDedup struct {
 //NewDedup - creates new in-memory deduplicator
 func NewDedup(maxSize int) Deduplicator {
 	if maxSize <= 0 {
-		log.Fatalf("illegal maxSize %d", maxSize)
+		panic("dedup: maxsize is positive num")
 	}
 	return &memDedup{make(map[DedupKey]struct{}), make([]DedupKey, maxSize), maxSize, 0, 0}
 }
